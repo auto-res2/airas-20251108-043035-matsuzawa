@@ -344,6 +344,8 @@ def _merge_run_specific(cfg: DictConfig) -> DictConfig:
     run_cfg_path = PROJECT_ROOT / "config" / "runs" / f"{cfg.run}.yaml"
     if run_cfg_path.exists():
         run_cfg = OmegaConf.load(run_cfg_path)
+        # Disable struct mode to allow new keys from run_cfg
+        OmegaConf.set_struct(cfg, False)
         cfg_merged = OmegaConf.merge(cfg, run_cfg)
         # *Hydra* may override *run* with a dict; ensure plain string id is retained.
         if "run_id" in cfg_merged:
@@ -352,6 +354,7 @@ def _merge_run_specific(cfg: DictConfig) -> DictConfig:
             cfg_merged.run_id = str(cfg.run)
     else:
         # No external file – treat "run" as the id.
+        OmegaConf.set_struct(cfg, False)
         cfg_merged = cfg
         cfg_merged.run_id = str(cfg.run)
     return cfg_merged
