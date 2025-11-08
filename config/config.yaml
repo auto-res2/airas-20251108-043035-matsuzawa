@@ -1,0 +1,63 @@
+# config/config.yaml
+# -----------------------------------------------------------------------------
+# Global Hydra configuration (base).  Run-specific YAML files located under
+# *config/runs/*.yaml* are merged at runtime by *src.train*.
+# -----------------------------------------------------------------------------
+
+defaults:
+  - _self_
+
+# -----------------------------------------------------------------------------
+run: ""          # CLI: run=<run_id>
+mode: full       # trial | full
+results_dir: ./results
+
+# -----------------------------------------------------------------------------
+wandb:
+  entity: gengaru617-personal
+  project: 2025-1108-1
+  mode: online   # will be auto-switched to "disabled" in trial mode
+
+# -----------------------------------------------------------------------------
+optuna:
+  n_trials: 0
+  direction: minimize
+  timeout_min: 0
+  search_space: {}
+
+# -----------------------------------------------------------------------------
+training:
+  epochs: 1
+  learning_rate: 3e-5
+  warmup_steps: 0
+  weight_decay: 0.0
+  beta1: 0.9
+  beta2: 0.999
+  eps: 1e-8
+  gradient_accumulation_steps: 1
+  max_grad_norm: 1.0
+  precision: fp16        # fp16 | fp32
+  batch_limit: null      # used in trial mode to cut after N batches
+  log_interval_steps: 50
+  seed: 42
+  pin_memory: true
+  persistent_workers: false
+  lagrangian_init: 0.1
+  dual_step_size_alpha: 0.05
+  gumbel_temperature_tau: 0.67
+  early_stopping_patience: 3
+
+# -----------------------------------------------------------------------------
+evaluation:
+  eval_batch_size: 4
+  generate_max_length: 128
+  num_beams: 4
+
+hardware:
+  device: cuda
+  allow_tf32: true
+
+# -----------------------------------------------------------------------------
+# *dataset* and *model* sections are supplied by the run-specific YAML and
+# merged dynamically in *src.train*.
+# -----------------------------------------------------------------------------

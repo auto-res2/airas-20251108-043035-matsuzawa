@@ -1,0 +1,85 @@
+run_id: comparative-1-iter1-Llama-2-7B-chat-7B-CNN-DailyMail-summarisation
+method: TABS
+model:
+  name: Llama-2-7B-chat
+  adapter: TABS                    # Token-wise Adaptive Basis Selection
+  hidden_size: 4096
+  num_layers: 32
+  spectral_rank_R: 16              # same R as proposed for fairness
+  precision: fp16                  # no mixed-precision gating in baseline
+  gating_temperature_tau: 0.67     # fixed if not tuned by Optuna
+  max_sequence_length: 4096
+  init_std: 0.02
+  dropout: 0.0
+
+dataset:
+  name: cnn_dailymail
+  subset: 3.0.0
+  task: summarisation
+  text_column: article
+  summary_column: highlights
+  train_split: train
+  validation_split: validation
+  test_split: test
+  max_length: 4096
+  truncation: right
+  padding: right
+  batch_size: 4
+  num_workers: 4
+  shuffle_buffer: 10_000
+
+training:
+  epochs: 3
+  learning_rate: 3e-5
+  scheduler: cosine
+  warmup_steps: 500
+  optimizer: adamw
+  weight_decay: 0.01
+  beta1: 0.9
+  beta2: 0.95
+  eps: 1e-8
+  gradient_accumulation_steps: 8
+  max_grad_norm: 1.0
+  precision: fp16
+  amp_level: O2
+  label_smoothing: 0.0
+  checkpoint_interval_steps: 1000
+  log_interval_steps: 50
+  seed: 42
+  deterministic: false
+  early_stopping_patience: 3
+  save_best_metric: rougeL
+  pin_memory: true
+  persistent_workers: true
+
+evaluation:
+  metrics: [rougeL, mean_joules_per_sample, latency_p99]
+  eval_batch_size: 4
+  generate_max_length: 128
+  use_beam_search: true
+  num_beams: 4
+
+hardware:
+  device: "cuda"
+  gpu_name: "A100-80GB"
+  allow_tf32: true
+
+optuna:
+  n_trials: 20
+  direction: maximize            # primary = ROUGE-L, energy ignored here
+  timeout_min: 240
+  search_space:
+    learning_rate:
+      type: loguniform
+      low: 1.0e-5
+      high: 5.0e-4
+    gating_temperature_tau:
+      type: uniform
+      low: 0.4
+      high: 1.0
+    batch_size:
+      type: categorical
+      choices: [2, 4]
+    gradient_accumulation_steps:
+      type: categorical
+      choices: [4, 8, 16]

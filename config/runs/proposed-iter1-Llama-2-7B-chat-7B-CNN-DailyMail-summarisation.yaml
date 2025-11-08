@@ -1,0 +1,104 @@
+run_id: proposed-iter1-Llama-2-7B-chat-7B-CNN-DailyMail-summarisation
+method: HEST
+model:
+  name: Llama-2-7B-chat
+  adapter: HEST
+  hidden_size: 4096            # taken from Llama-2-7B config
+  num_layers: 32               # taken from Llama-2-7B config
+  spectral_rank_R: 16          # number of spectral directions kept per layer
+  controller_width_k: 32       # width of factorised controller
+  precision_choices: [off, int8, fp16]
+  energy_budget_ratio: 0.6     # E_max = 0.6 × average energy of TABS
+  max_sequence_length: 4096
+  init_std: 0.02
+  dropout: 0.0
+  weight_tying: true
+  rotary_embedding_base: 10000
+  rope_scaling: null           # not used for ≤4k tokens
+
+dataset:
+  name: cnn_dailymail
+  subset: 3.0.0                # HF dataset version
+  task: summarisation
+  text_column: article
+  summary_column: highlights
+  train_split: train
+  validation_split: validation
+  test_split: test
+  max_length: 4096
+  truncation: right
+  padding: right
+  batch_size: 4                # fits on 80 GB with grad-accumulation
+  num_workers: 4
+  shuffle_buffer: 10_000
+
+training:
+  epochs: 3
+  learning_rate: 3e-5
+  scheduler: cosine
+  warmup_steps: 500
+  optimizer: adamw
+  weight_decay: 0.01
+  beta1: 0.9
+  beta2: 0.95
+  eps: 1e-8
+  gradient_accumulation_steps: 8
+  max_grad_norm: 1.0
+  precision: fp16
+  amp_level: O2
+  lagrangian_init: 0.1         # λ₀ for dual ascent
+  dual_step_size_alpha: 0.05
+  gumbel_temperature_tau: 0.67
+  label_smoothing: 0.0
+  checkpoint_interval_steps: 1000
+  log_interval_steps: 50
+  seed: 42
+  deterministic: false
+  early_stopping_patience: 3
+  save_best_metric: rougeL
+  pin_memory: true
+  persistent_workers: true
+
+evaluation:
+  metrics: [rougeL, mean_joules_per_sample, latency_p99]
+  eval_batch_size: 4
+  generate_max_length: 128
+  use_beam_search: true
+  num_beams: 4
+
+hardware:
+  device: "cuda"
+  gpu_name: "A100-80GB"
+  allow_tf32: true
+  torch_int8_gemm: true
+
+optuna:
+  n_trials: 30
+  direction: minimize          # primary metric = mean energy @ ≥baseline ROUGE
+  timeout_min: 360             # stop search after 6 h
+  search_space:
+    learning_rate:
+      type: loguniform
+      low: 1.0e-5
+      high: 5.0e-4
+    controller_width_k:
+      type: categorical
+      choices: [16, 32, 64]
+    energy_budget_ratio:
+      type: uniform
+      low: 0.4
+      high: 0.8
+    gumbel_temperature_tau:
+      type: uniform
+      low: 0.4
+      high: 1.0
+    dual_step_size_alpha:
+      type: loguniform
+      low: 0.01
+      high: 0.2
+    batch_size:
+      type: categorical
+      choices: [2, 4]
+    gradient_accumulation_steps:
+      type: categorical
+      choices: [4, 8, 16]
