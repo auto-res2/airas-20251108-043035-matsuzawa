@@ -1,0 +1,391 @@
+
+LLM Name: o3-2025-04-16
+Input:
+You are an AI code reviewer validating production-ready experiment code for research papers.
+
+Analyze the provided experiment code and determine if it meets all requirements for immediate execution in research experiments.
+
+# Instructions
+
+## Core Validation Criteria
+Check if the generated experiment code meets ALL of the following requirements:
+
+1. **Complete Implementation**:
+   - Every component is fully functional, production-ready, publication-worthy code
+   - No "omitted for brevity", no "simplified version", no TODO, PLACEHOLDER, pass, or ...
+   - All functions and classes are completely implemented
+   - No truncated code sections or incomplete implementations
+
+2. **Hydra Integration**:
+   - Uses Hydra to manage all experiment configurations from `config/runs/*.yaml` files
+   - All parameters are loaded from run configs dynamically
+   - Proper configuration structure with run_id, method, model, dataset, training, and optuna sections
+   - CLI interface matches:
+     * Training (full): `uv run python -u -m src.main run={run_id} results_dir={path} mode=full`
+     * Training (trial): `uv run python -u -m src.main run={run_id} results_dir={path} mode=trial`
+     * Evaluation: `uv run python -m src.evaluate results_dir={path} run_ids='["run-1", "run-2", ...]'` (independent execution)
+   - Code must automatically configure based on mode:
+     * When `cfg.mode == "trial"`: Set `cfg.wandb.mode = "disabled"`, `cfg.optuna.n_trials = 0`, epochs=1
+     * When `cfg.mode == "full"`: Set `cfg.wandb.mode = "online"` and use full configuration
+
+3. **Complete Data Pipeline**:
+   - Full data loading and preprocessing implementation
+   - Dataset-specific preprocessing is properly implemented
+   - No placeholder dataset loading code
+   - Proper error handling for data operations
+   - Uses `.cache/` as the cache directory for all datasets and models
+
+4. **Model Implementation**:
+   - Complete model architectures for all methods (proposed and comparative methods)
+   - No placeholders (TODO, PLACEHOLDER, pass, or incomplete implementations)
+   - When External Resources specify HuggingFace models: properly use and customize them (acceptable to wrap AutoModel, add adapters, etc.)
+   - When no external models specified: implement architectures from scratch using PyTorch primitives
+   - Model-specific configurations correctly applied
+   - Proper PyTorch usage throughout
+
+5. **File Structure Compliance**:
+   - Contains EXACTLY these required files (and NO other files):
+     * `src/train.py`
+     * `src/evaluate.py`
+     * `src/preprocess.py`
+     * `src/model.py`
+     * `src/main.py`
+     * `pyproject.toml`
+     * `config/config.yaml`
+   - NO additional files (e.g., NO `src/__init__.py`, NO `setup.py`, NO other Python files)
+   - No missing files from the structure
+   - All functionality contained within specified files
+
+6. **WandB Integration**:
+   - train.py initializes WandB and logs ALL metrics comprehensively:
+     * Use `wandb.log()` at each training step/batch/epoch with ALL relevant time-series metrics
+     * Log as frequently as possible (per-batch or per-epoch) to capture complete training dynamics
+     * Use `wandb.summary["key"] = value` to save final/best metrics (best_val_acc, final_test_acc, best_epoch, etc.)
+     * Metric names in train.py's wandb.log() MUST exactly match the keys used in evaluate.py's run.history()
+   - Optuna Integration: If using Optuna, DO NOT log intermediate trial results to WandB - only log the final run with best hyperparameters
+   - Code must automatically configure based on mode:
+     * When `cfg.mode == "trial"`: Set `cfg.wandb.mode = "disabled"` before any WandB operations
+     * When `cfg.mode == "full"`: Set `cfg.wandb.mode = "online"` before any WandB operations
+   - NO results.json or stdout JSON dumps in train.py
+   - config/config.yaml contains mandatory WandB settings (entity/project)
+   - `WANDB_API_KEY` environment variable is available for authentication
+
+7. **Configuration Files**:
+   - The generated code properly references config files via Hydra
+   - NOTE: config/runs/{run_id}.yaml files are provided separately (not in ExperimentCode)
+   - All run configurations match the experiment_runs provided
+   - Optuna search spaces are properly defined if applicable
+
+8. **Evaluation Script Independence**:
+   - evaluate.py is executed independently via `uv run python -m src.evaluate results_dir={path} run_ids='["run-1", "run-2"]'`
+   - Accepts `run_ids` parameter as JSON string list (parse with `json.loads(args.run_ids)`)
+   - main.py DOES NOT call evaluate.py
+   - evaluate.py loads WandB config from `config/config.yaml` (in repository root)
+   - evaluate.py retrieves comprehensive data from WandB API:
+     * Use `wandb.Api()` to get run data: `run = api.run(f"{entity}/{project}/{run_id}")`
+     * Retrieve: `history = run.history()`, `summary = run.summary._json_dict`, `config = dict(run.config)`
+   - **STEP 1: Per-Run Processing** (for each run_id):
+     * Export comprehensive run-specific metrics to: `{results_dir}/{run_id}/metrics.json`
+     * Generate run-specific figures (learning curves, confusion matrices) to: `{results_dir}/{run_id}/`
+     * Each run should have its own subdirectory with its metrics and figures
+   - **STEP 2: Aggregated Analysis** (after processing all runs):
+     * Export aggregated metrics to: `{results_dir}/comparison/aggregated_metrics.json` with the following structure:
+       ```json
+       {
+         "primary_metric": "Mean Joules per sample at equal or better Rouge-L.",
+         "metrics": {
+           "metric_name_1": {"run_id_1": value1, "run_id_2": value2, ...},
+           "metric_name_2": {"run_id_1": value1, "run_id_2": value2, ...}
+         },
+         "best_proposed": {
+           "run_id": "proposed-iter2-model-dataset",
+           "value": 0.92
+         },
+         "best_baseline": {
+           "run_id": "comparative-1-model-dataset",
+           "value": 0.88
+         },
+         "gap": 4.55
+       }
+       ```
+       The structure must include:
+       - "primary_metric": The primary evaluation metric name from the hypothesis
+       - "metrics": All collected metrics organized by metric name, then by run_id
+       - "best_proposed": The run_id and value of the proposed method with the best primary_metric performance (run_id contains "proposed")
+       - "best_baseline": The run_id and value of the baseline/comparative method with the best primary_metric performance (run_id contains "comparative" or "baseline")
+       - "gap": Performance gap calculated as: (best_proposed.value - best_baseline.value) / best_baseline.value * 100
+         * Must use the expected results from the hypothesis to determine metric direction (higher vs lower is better)
+         * If the metric should be minimized, reverse the sign of the gap
+         * The gap represents the percentage improvement of the proposed method over the best baseline
+     * Generate comparison figures to: `{results_dir}/comparison/`
+     * Cross-run comparison charts (bar charts, box plots)
+     * Performance metrics tables
+     * Statistical significance tests
+   - Proper figure quality: legends, annotations, tight_layout
+   - Follows GLOBALLY UNIQUE naming convention to prevent collisions:
+     * Per-run figures: `{run_id}_{figure_topic}[_<condition>][_pairN].pdf` (e.g., `run-1-proposed-bert-glue_learning_curve.pdf`)
+     * Comparison figures: `comparison_{figure_topic}[_<condition>][_pairN].pdf` (e.g., `comparison_accuracy_bar_chart.pdf`)
+   - train.py and main.py generate NO figures
+   - evaluate.py cannot run in trial_mode (no WandB data available when WandB disabled)
+
+9. **Mode-Based Implementation**:
+   - `mode` parameter controls experiment behavior (required parameter)
+   - When `cfg.mode == "trial"`:
+     * Properly reduces computational load: epochs=1, batches limited to 1-2, Optuna disabled (n_trials=0), small evaluation subset
+     * Automatically sets `cfg.wandb.mode = "disabled"`
+     * Purpose: Fast validation that code runs without errors
+   - When `cfg.mode == "full"`:
+     * Automatically sets `cfg.wandb.mode = "online"`
+     * Uses full configuration (full epochs, full Optuna trials, etc.)
+
+## Output Format
+Respond with a JSON object containing:
+- `is_code_ready`: boolean - true if ALL criteria are met, false otherwise
+- `code_issue`: string - specific issues found if any criteria are not met, focusing on what needs to be fixed
+
+# Hypothesis
+open_problems='Token-wise spectral gating (TABS) solves the per-example FLOP cap but still presents three unresolved issues: 1) every layer decides gates independently, so easy tokens may still be processed in deep layers although they were already solved by earlier ones; 2) the per-token controllers scale linearly with sequence length × layers × R and therefore dominate the adapter parameter count on long inputs; 3) the budget is expressed only in FLOPs, disregarding the large energy gap between low-precision and fp16 kernels. We lack a PEFT mechanism that (a) allocates capacity jointly across *layer depth* and *spectral directions*, (b) keeps the controller cost sub-linear in sequence length, (c) trades off *rank* and *precision* under one universal, user-specified *energy* envelope.' method='Hierarchical Energy-constrained Spectral Tuning (HEST)\n1. Factorised controller  g(h_{ℓ,t}) = σ( W_tok h_{ℓ,t})·σ( w_ℓ )  produces a rank-1 outer product of token-score and layer-score which is broadcast to the R directions.  Two tiny matrices W_tok∈ℝ^{d×k} and W_ℓ∈ℝ^{L×k} with k≪d remove the O(T·L·R) cost (now O((T+L)·k)).\n2. Each direction i can be chosen in {off, int8, fp16}.  We encode this with a 3-way Gumbel-Softmax gate g_{ℓ,t,i}∈Δ² whose expected energy cost is E_{state}[E_dir(i,state)].\n3. One global Lagrangian λ enforces  Σ_{ℓ,t,i}E_dir(g_{ℓ,t,i}) ≤  E_max  via the differentiable loss  ℒ = task_loss + λ·(Ē−E_max).  λ is updated every batch with a single dual ascent step (no projection).\n4. At convergence the gates are hardened; int8 choices are fused into INT8 MatMuls, others stay fp16.  The worst-case energy per sequence is now strictly bounded by E_max and wall-time improves because many late-layer MatMuls run in INT8 or are skipped.\n5. All additions fit in <200 lines of PyTorch and reuse native Int8 GEMM kernels (torch.cuda.matmul.allow_tf32/int8).' experimental_setup='Model/Data: Llama-2-7B-chat with sequence length up to 4k on (i) CNN/DailyMail summarisation, (ii) Long Range Arena text benchmarks.\nBaselines: LoRA-r8, BHSP (token-agnostic), TABS (token-wise, fp16 only).\nProposed: HEST with k=32, R=16, E_max set to 0.6× TABS average energy.\nMetrics: Rouge-L / accuracy, realised Joules/sample (NVML), 99-th latency, controller-param count, layer-depth utilisation heat-map.\nAblations: no precision choice (fp16 only), no dual variable (soft penalty), unfactorised controller.' primary_metric='Mean Joules per sample at equal or better Rouge-L.' experimental_code='import torch, torch.nn as nn, torch.nn.functional as F\nclass FactorisedController(nn.Module):\n    def __init__(self,d,L,k):\n        super().__init__(); self.W_tok=nn.Linear(d,k,bias=False); self.W_layer=nn.Parameter(torch.zeros(L,k))\n    def forward(self,h,layer_id):          # h:(T,d)\n        s_tok=torch.sigmoid(self.W_tok(h))  # (T,k)\n        s_layer=torch.sigmoid(self.W_layer[layer_id])  # (k,)\n        return (s_tok*s_layer).mean(-1)     # (T,)\nclass HESTLayer(nn.Module):\n    def __init__(self,U,S,V,energy_fp16,energy_int8,R,k):\n        super().__init__(); self.U,self.S,self.V=U,S,V; self.R=R; self.e16=energy_fp16; self.e8=energy_int8\n        self.ctrl=FactorisedController(U.size(0),1,k)  # layer dim inserted later\n    def forward(self,h,λ,E_acc):\n        p=self.ctrl(h,0).unsqueeze(-1).repeat(1,self.R)             # (T,R)\n        logits=torch.log(p+1e-6).unsqueeze(-1).repeat(1,1,3)        # off,int8,fp16\n        g=F.gumbel_softmax(logits,tau=2/3,hard=False)               # (T,R,3)\n        E_batch=(g[:,:,1]*self.e8 + g[:,:,2]*self.e16).sum()\n        E_acc+=E_batch; penalty=λ*E_batch\n        state=g.argmax(-1)                                          # hard for matmul\n        S_adj=self.S[:self.R]\n        outs=[]\n        for st,ht in zip(state,h):\n            mask_fp16=(st==2).float(); mask_int8=(st==1).float()\n            W=(self.U[:,:self.R]*S_adj).matmul(self.V[:self.R])\n            if mask_int8.any():\n                ht_int8=ht.half(); out_i8=(ht_int8@W.T).half(); out_i8*=mask_int8\n            else: out_i8=0\n            out_fp16=(ht@W.T)*mask_fp16\n            outs.append(out_i8+out_fp16)\n        return torch.stack(outs), penalty,E_acc' expected_result='HEST matches TABS on Rouge-L (≈44.3) while cutting mean energy by ≥40 %, 99-th latency by 35 %, and reducing controller parameters by 90 %. On 4 k-token inputs it never exceeds E_max whereas TABS overshoots by 1.8× on the longest sequences.' expected_conclusion='A hierarchical, factorised controller plus joint rank/precision gating turns spectral adapters into an energy-adaptive mechanism that scales to long sequences and edge devices. HEST demonstrates that enforcing a single global *energy* budget—rather than FLOPs alone—yields substantial real-world savings without accuracy loss, pushing PEFT towards sustainable, green NLP.'
+
+# Current Research Method
+Hierarchical Energy-constrained Spectral Tuning (HEST)
+1. Factorised controller  g(h_{ℓ,t}) = σ( W_tok h_{ℓ,t})·σ( w_ℓ )  produces a rank-1 outer product of token-score and layer-score which is broadcast to the R directions.  Two tiny matrices W_tok∈ℝ^{d×k} and W_ℓ∈ℝ^{L×k} with k≪d remove the O(T·L·R) cost (now O((T+L)·k)).
+2. Each direction i can be chosen in {off, int8, fp16}.  We encode this with a 3-way Gumbel-Softmax gate g_{ℓ,t,i}∈Δ² whose expected energy cost is E_{state}[E_dir(i,state)].
+3. One global Lagrangian λ enforces  Σ_{ℓ,t,i}E_dir(g_{ℓ,t,i}) ≤  E_max  via the differentiable loss  ℒ = task_loss + λ·(Ē−E_max).  λ is updated every batch with a single dual ascent step (no projection).
+4. At convergence the gates are hardened; int8 choices are fused into INT8 MatMuls, others stay fp16.  The worst-case energy per sequence is now strictly bounded by E_max and wall-time improves because many late-layer MatMuls run in INT8 or are skipped.
+5. All additions fit in <200 lines of PyTorch and reuse native Int8 GEMM kernels (torch.cuda.matmul.allow_tf32/int8).
+
+# Experimental Design
+- Strategy: We will fine-tune a pretrained Llama-2-7B-chat model on the CNN/DailyMail summarisation task using the proposed Hierarchical Energy-constrained Spectral Tuning (HEST) adapter. During training we jointly optimise task loss and an energy-budget Lagrangian so that, for every input sequence, the total expected energy of all spectral directions stays below a user-specified envelope. The controller is factorised across tokens and layers (rank-1 outer product) and produces a 3-way Gumbel-Softmax gate per spectral direction that selects one of {off, INT8, FP16}. After convergence we harden the gates and fuse INT8 choices into integer GEMM kernels; de-activated directions are skipped. We compare HEST against the strongest prior energy-oblivious spectral adapter, Token-wise Adaptive Basis Selection (TABS), under the same backbone, data split, and optimisation schedule. We report summarisation quality, energy consumed per sample (read with NVML), tail latency, and parameter-efficiency. A small grid search over learning-rate, controller width k, and the energy budget E_max is performed on the validation set. Experiments run on a single NVIDIA A100 80 GB GPU with plenty of system RAM.
+- Proposed Method: Hierarchical Energy-constrained Spectral Tuning (HEST) adds fewer than 200 lines of PyTorch to a standard low-rank spectral adapter.
+1. Factorised controller: g(h_{ℓ,t}) = σ(W_tok h_{ℓ,t}) · σ(w_ℓ) with W_tok∈ℝ^{d×k} and w_ℓ∈ℝ^{k}. This reduces controller complexity from O(T·L·R) to O((T+L)·k).
+2. Precision/state gating: For every retained spectral direction i we learn a 3-way Gumbel-Softmax gate g_{ℓ,t,i}∈Δ² that selects {off, INT8, FP16}. Its expected energy is E_dir(i,state) and is differentiable via the Gumbel trick (τ=2⁄3).
+3. Single global energy budget: A dual variable λ is updated each batch (λ←[λ+α(Ē−E_max)]₊) so the loss becomes 𝓛 = task_loss + λ·(Ē−E_max). This enforces Σ_{ℓ,t,i}E_dir ≤ E_max per sequence.
+4. Inference hardening: At the end of training we sample argmax over gates, eliminate “off” directions, fuse INT8 directions into torch.int8 GEMMs, and leave the remainder in FP16. The bound E_max now holds exactly in worst-case.
+5. Implementation: relies only on standard PyTorch, torch.autocast for INT8, and NVML for energy readings; compatible with any transformer block.
+- Evaluation Metrics: ['Mean Joules per sample at equal or better Rouge-L', 'ROUGE-L', 'Accuracy', '99th percentile latency', 'Controller parameter count', 'Mean Joules per sample at equal or better Rouge-L.']
+
+# Experiment Runs
+
+- Run ID: proposed-iter1-Llama-2-7B-chat-7B-CNN-DailyMail-summarisation
+  Method: proposed
+  Model: Llama-2-7B-chat (7B)
+  Dataset: CNN/DailyMail summarisation
+  
+  Config Content:
+  ```yaml
+  run_id: proposed-iter1-Llama-2-7B-chat-7B-CNN-DailyMail-summarisation
+method: HEST
+model:
+  name: Llama-2-7B-chat
+  adapter: HEST
+  hidden_size: 4096            # taken from Llama-2-7B config
+  num_layers: 32               # taken from Llama-2-7B config
+  spectral_rank_R: 16          # number of spectral directions kept per layer
+  controller_width_k: 32       # width of factorised controller
+  precision_choices: [off, int8, fp16]
+  energy_budget_ratio: 0.6     # E_max = 0.6 × average energy of TABS
+  max_sequence_length: 4096
+  init_std: 0.02
+  dropout: 0.0
+  weight_tying: true
+  rotary_embedding_base: 10000
+  rope_scaling: null           # not used for ≤4k tokens
+
+dataset:
+  name: cnn_dailymail
+  subset: 3.0.0                # HF dataset version
+  task: summarisation
+  text_column: article
+  summary_column: highlights
+  train_split: train
+  validation_split: validation
+  test_split: test
+  max_length: 4096
+  truncation: right
+  padding: right
+  batch_size: 4                # fits on 80 GB with grad-accumulation
+  num_workers: 4
+  shuffle_buffer: 10_000
+
+training:
+  epochs: 3
+  learning_rate: 3e-5
+  scheduler: cosine
+  warmup_steps: 500
+  optimizer: adamw
+  weight_decay: 0.01
+  beta1: 0.9
+  beta2: 0.95
+  eps: 1e-8
+  gradient_accumulation_steps: 8
+  max_grad_norm: 1.0
+  precision: fp16
+  amp_level: O2
+  lagrangian_init: 0.1         # λ₀ for dual ascent
+  dual_step_size_alpha: 0.05
+  gumbel_temperature_tau: 0.67
+  label_smoothing: 0.0
+  checkpoint_interval_steps: 1000
+  log_interval_steps: 50
+  seed: 42
+  deterministic: false
+  early_stopping_patience: 3
+  save_best_metric: rougeL
+  pin_memory: true
+  persistent_workers: true
+
+evaluation:
+  metrics: [rougeL, mean_joules_per_sample, latency_p99]
+  eval_batch_size: 4
+  generate_max_length: 128
+  use_beam_search: true
+  num_beams: 4
+
+hardware:
+  device: "cuda"
+  gpu_name: "A100-80GB"
+  allow_tf32: true
+  torch_int8_gemm: true
+
+optuna:
+  n_trials: 30
+  direction: minimize          # primary metric = mean energy @ ≥baseline ROUGE
+  timeout_min: 360             # stop search after 6 h
+  search_space:
+    learning_rate:
+      type: loguniform
+      low: 1.0e-5
+      high: 5.0e-4
+    controller_width_k:
+      type: categorical
+      choices: [16, 32, 64]
+    energy_budget_ratio:
+      type: uniform
+      low: 0.4
+      high: 0.8
+    gumbel_temperature_tau:
+      type: uniform
+      low: 0.4
+      high: 1.0
+    dual_step_size_alpha:
+      type: loguniform
+      low: 0.01
+      high: 0.2
+    batch_size:
+      type: categorical
+      choices: [2, 4]
+    gradient_accumulation_steps:
+      type: categorical
+      choices: [4, 8, 16]
+
+  ```
+  
+
+- Run ID: comparative-1-iter1-Llama-2-7B-chat-7B-CNN-DailyMail-summarisation
+  Method: comparative-1
+  Model: Llama-2-7B-chat (7B)
+  Dataset: CNN/DailyMail summarisation
+  
+  Config Content:
+  ```yaml
+  run_id: comparative-1-iter1-Llama-2-7B-chat-7B-CNN-DailyMail-summarisation
+method: TABS
+model:
+  name: Llama-2-7B-chat
+  adapter: TABS                    # Token-wise Adaptive Basis Selection
+  hidden_size: 4096
+  num_layers: 32
+  spectral_rank_R: 16              # same R as proposed for fairness
+  precision: fp16                  # no mixed-precision gating in baseline
+  gating_temperature_tau: 0.67     # fixed if not tuned by Optuna
+  max_sequence_length: 4096
+  init_std: 0.02
+  dropout: 0.0
+
+dataset:
+  name: cnn_dailymail
+  subset: 3.0.0
+  task: summarisation
+  text_column: article
+  summary_column: highlights
+  train_split: train
+  validation_split: validation
+  test_split: test
+  max_length: 4096
+  truncation: right
+  padding: right
+  batch_size: 4
+  num_workers: 4
+  shuffle_buffer: 10_000
+
+training:
+  epochs: 3
+  learning_rate: 3e-5
+  scheduler: cosine
+  warmup_steps: 500
+  optimizer: adamw
+  weight_decay: 0.01
+  beta1: 0.9
+  beta2: 0.95
+  eps: 1e-8
+  gradient_accumulation_steps: 8
+  max_grad_norm: 1.0
+  precision: fp16
+  amp_level: O2
+  label_smoothing: 0.0
+  checkpoint_interval_steps: 1000
+  log_interval_steps: 50
+  seed: 42
+  deterministic: false
+  early_stopping_patience: 3
+  save_best_metric: rougeL
+  pin_memory: true
+  persistent_workers: true
+
+evaluation:
+  metrics: [rougeL, mean_joules_per_sample, latency_p99]
+  eval_batch_size: 4
+  generate_max_length: 128
+  use_beam_search: true
+  num_beams: 4
+
+hardware:
+  device: "cuda"
+  gpu_name: "A100-80GB"
+  allow_tf32: true
+
+optuna:
+  n_trials: 20
+  direction: maximize            # primary = ROUGE-L, energy ignored here
+  timeout_min: 240
+  search_space:
+    learning_rate:
+      type: loguniform
+      low: 1.0e-5
+      high: 5.0e-4
+    gating_temperature_tau:
+      type: uniform
+      low: 0.4
+      high: 1.0
+    batch_size:
+      type: categorical
+      choices: [2, 4]
+    gradient_accumulation_steps:
+      type: categorical
+      choices: [4, 8, 16]
+
+  ```
+  
+
+
+# Generated Experiment Code (To be validated)
+{"config_yaml": "# config/config.yaml\n\ndefaults:\n  - _self_\n\n# These will be overridden from CLI and run-specific YAMLs\nrun: null\nmode: full\nresults_dir: ./results\n\nwandb:\n  entity: gengaru617-personal\n  project: 2025-1108-1\n  mode: online\n\n# minimal stubs for fields overridden by run configs\noptuna:\n  n_trials: 0\n  direction: minimize\n  timeout_min: 0\n\ntraining:\n  epochs: 1\n  batch_limit: null\n  seed: 42\n\n", "evaluate_py": "# src/evaluate.py\nimport argparse\nimport json\nimport os\nfrom pathlib import Path\nfrom uuid import uuid4\n\nimport wandb\nimport matplotlib.pyplot as plt\nimport seaborn as sns\nimport pandas as pd\nfrom scipy import stats\n\nfrom omegaconf import OmegaConf\n\n\nPRIMARY_METRIC = \"mean_joules_per_sample\"\n\n\ndef parse_args():\n    p = argparse.ArgumentParser()\n    p.add_argument(\"results_dir\", type=str)\n    p.add_argument(\"run_ids\", type=str, help=\u0027JSON list, e.g., \"[\\\"run-1\\\", \\\"run-2\\\"]\"\u0027)\n    return p.parse_args()\n\n\ndef retrieve_run(entity, project, run_id):\n    api = wandb.Api()\n    run = api.run(f\"{entity}/{project}/{run_id}\")\n    history = run.history(keys=[\"train_loss\", \"task_loss\", PRIMARY_METRIC])\n    summary = run.summary._json_dict\n    config = dict(run.config)\n    return history, summary, config\n\n\ndef save_metrics(metrics: dict, path: Path):\n    path.write_text(json.dumps(metrics, indent=2))\n\n\ndef learning_curve_fig(history: pd.DataFrame, out_path: Path, run_id: str):\n    plt.figure(figsize=(6, 4))\n    sns.lineplot(data=history, x=history.index, y=\"train_loss\", label=\"train_loss\")\n    plt.title(f\"Learning Curve \u2013 {run_id}\")\n    plt.xlabel(\"Step\")\n    plt.ylabel(\"Loss\")\n    plt.tight_layout()\n    plt.savefig(out_path)\n    plt.close()\n\n\ndef comparison_bar(metric_dict: dict, out_path: Path, metric_name: str):\n    plt.figure(figsize=(8, 5))\n    runs = list(metric_dict.keys())\n    values = [metric_dict[r] for r in runs]\n    ax = sns.barplot(x=runs, y=values)\n    for i, v in enumerate(values):\n        ax.text(i, v, f\"{v:.2f}\", ha=\"center\", va=\"bottom\")\n    plt.ylabel(metric_name)\n    plt.xticks(rotation=45, ha=\"right\")\n    plt.tight_layout()\n    plt.savefig(out_path)\n    plt.close()\n\n\ndef main():\n    args = parse_args()\n    run_ids = json.loads(args.run_ids)\n    results_dir = Path(args.results_dir)\n    results_dir.mkdir(parents=True, exist_ok=True)\n\n    # load global wandb config\n    wandb_cfg = OmegaConf.load(Path(__file__).resolve().parents[1] / \"config\" / \"config.yaml\").wandb\n    entity, project = wandb_cfg.entity, wandb_cfg.project\n\n    aggregated = {\n        \"primary_metric\": \"Mean Joules per sample at equal or better Rouge-L.\",\n        \"metrics\": {},\n    }\n\n    for run_id in run_ids:\n        history, summary, config = retrieve_run(entity, project, run_id)\n        run_dir = results_dir / run_id\n        run_dir.mkdir(exist_ok=True, parents=True)\n\n        metrics = {**summary}\n        save_metrics(metrics, run_dir / \"metrics.json\")\n\n        # learning curve figure\n        fig_name = f\"{run_id}_learning_curve_{uuid4().hex[:4]}.pdf\"\n        learning_curve_fig(history, run_dir / fig_name, run_id)\n        print(run_dir / fig_name)\n\n        # fill aggregated\n        for k, v in metrics.items():\n            if isinstance(v, (int, float)):\n                aggregated.setdefault(\"metrics\", {}).setdefault(k, {})[run_id] = v\n\n    # determine best runs\n    energy_metrics = aggregated[\"metrics\"].get(PRIMARY_METRIC, {})\n    baseline_candidates = {k: v for k, v in energy_metrics.items() if any(t in k for t in (\"baseline\", \"comparative\"))}\n    proposed_candidates = {k: v for k, v in energy_metrics.items() if \"proposed\" in k}\n\n    best_baseline_id, best_baseline_val = min(baseline_candidates.items(), key=lambda x: x[1]) if baseline_candidates else (None, None)\n    best_proposed_id, best_proposed_val = min(proposed_candidates.items(), key=lambda x: x[1]) if proposed_candidates else (None, None)\n\n    gap = None\n    if best_baseline_val is not None and best_proposed_val is not None:\n        gap = (best_baseline_val - best_proposed_val) / best_baseline_val * 100.0\n\n    aggregated[\"best_proposed\"] = {\"run_id\": best_proposed_id, \"value\": best_proposed_val}\n    aggregated[\"best_baseline\"] = {\"run_id\": best_baseline_id, \"value\": best_baseline_val}\n    aggregated[\"gap\"] = gap\n\n    comparison_dir = results_dir / \"comparison\"\n    comparison_dir.mkdir(exist_ok=True, parents=True)\n    save_metrics(aggregated, comparison_dir / \"aggregated_metrics.json\")\n    print(comparison_dir / \"aggregated_metrics.json\")\n\n    # comparison figures\n    if energy_metrics:\n        fig_name = f\"comparison_energy_{uuid4().hex[:4]}.pdf\"\n        comparison_bar(energy_metrics, comparison_dir / fig_name, PRIMARY_METRIC)\n        print(comparison_dir / fig_name)\n\n\nif __name__ == \"__main__\":\n    main()\n", "main_py": "# src/main.py\nimport subprocess\nimport sys\nfrom pathlib import Path\nimport logging\n\nfrom omegaconf import OmegaConf, DictConfig\nimport hydra\n\nlogger = logging.getLogger(__name__)\n\n\n@hydra.main(config_path=\"../config\", config_name=\"config\")\ndef main(cfg: DictConfig):\n    # merge with run-specific YAML\n    run_cfg_path = Path(__file__).resolve().parents[1] / \"config\" / \"runs\" / f\"{cfg.run}.yaml\"\n    if not run_cfg_path.exists():\n        raise FileNotFoundError(f\"No such run config: {run_cfg_path}\")\n    run_cfg = OmegaConf.load(run_cfg_path)\n    cfg = OmegaConf.merge(cfg, run_cfg)\n\n    # -------- Mode specific changes ----------\n    if cfg.mode == \"trial\":\n        cfg.wandb.mode = \"disabled\"\n        cfg.optuna.n_trials = 0\n        cfg.training.epochs = 1\n        cfg.training.batch_limit = 2\n    elif cfg.mode == \"full\":\n        cfg.wandb.mode = \"online\"\n    else:\n        raise ValueError(\"mode must be \u0027trial\u0027 or \u0027full\u0027\")\n    # -----------------------------------------\n\n    # Print final config for transparency\n    logger.info(\"\\n\" + OmegaConf.to_yaml(cfg))\n\n    # build argument overrides for train.py\n    overrides = [\n        f\"run={cfg.run}\",\n        f\"mode={cfg.mode}\",\n        f\"results_dir={cfg.results_dir}\",\n        f\"wandb.mode={cfg.wandb.mode}\",\n        f\"optuna.n_trials={cfg.optuna.n_trials}\",\n        f\"training.epochs={cfg.training.epochs}\",\n    ]\n    if cfg.mode == \"trial\":\n        overrides.append(\"training.batch_limit=2\")\n\n    cmd = [sys.executable, \"-u\", \"-m\", \"src.train\"] + overrides\n    logger.info(\"Launching training subprocess: \" + \" \".join(cmd))\n    subprocess.run(cmd, check=True)\n\n\nif __name__ == \"__main__\":\n    main()\n", "model_py": "# src/model.py\nfrom typing import Any\nimport math\n\nimport torch\nimport torch.nn as nn\nimport torch.nn.functional as F\nfrom omegaconf import DictConfig\nfrom transformers import AutoModelForSeq2SeqLM, AutoModelForCausalLM\n\nENERGY_FP16 = 1.0  # arbitrary unit\nENERGY_INT8 = 0.6\n\n\nclass FactorisedController(nn.Module):\n    \"\"\"Implements g(h) = \u03c3(W_tok h) \u00b7 \u03c3(w_layer)\"\"\"\n\n    def __init__(self, hidden_size: int, k: int):\n        super().__init__()\n        self.W_tok = nn.Linear(hidden_size, k, bias=False)\n        self.w_layer = nn.Parameter(torch.zeros(k))\n\n    def forward(self, hidden: torch.Tensor) -\u003e torch.Tensor:\n        # hidden: (batch, seq, d)\n        s_tok = torch.sigmoid(self.W_tok(hidden))  # (b, seq, k)\n        s_layer = torch.sigmoid(self.w_layer)  # (k,)\n        return (s_tok * s_layer).mean(-1)  # (b, seq)\n\n\nclass HESTAdapter(nn.Module):\n    def __init__(self, hidden_size: int, cfg: DictConfig):\n        super().__init__()\n        self.R = cfg.model.spectral_rank_R\n        self.controller = FactorisedController(hidden_size, cfg.model.controller_width_k)\n        # energy per direction constants\n        self.register_buffer(\"e_fp16\", torch.tensor(ENERGY_FP16))\n        self.register_buffer(\"e_int8\", torch.tensor(ENERGY_INT8))\n        self.temperature = cfg.training.gumbel_temperature_tau\n\n    def forward(self, hidden: torch.Tensor) -\u003e torch.Tensor:\n        # hidden: (b, seq, d)\n        p = self.controller(hidden).unsqueeze(-1).repeat(1, 1, self.R)  # (b, seq, R)\n        logits = torch.log(p + 1e-6).unsqueeze(-1).repeat(1, 1, 1, 3)  # (b, seq, R, 3)\n        g = F.gumbel_softmax(logits, tau=self.temperature, hard=False)\n        energy = (g[..., 1] * self.e_int8 + g[..., 2] * self.e_fp16).sum()\n        return energy\n\n\nclass BaselineTABSAdapter(nn.Module):\n    \"\"\"A minimalist baseline without precision choice (always fp16).\"\"\"\n\n    def __init__(self):\n        super().__init__()\n\n    def forward(self, hidden: torch.Tensor) -\u003e torch.Tensor:  # noqa: D401\n        return torch.tensor(0.0, device=hidden.device)\n\n\nclass EnergyWrapperModel(nn.Module):\n    \"\"\"Wraps an HF model and adds energy penalty computation.\"\"\"\n\n    def __init__(self, backbone: nn.Module, adapter: nn.Module, cfg: DictConfig):\n        super().__init__()\n        self.backbone = backbone\n        self.adapter = adapter\n        self.cfg = cfg\n\n    def forward(self, **kwargs):\n        kwargs.setdefault(\"output_hidden_states\", True)\n        outputs = self.backbone(**kwargs)\n        hidden_states = outputs.encoder_last_hidden_state if hasattr(outputs, \"encoder_last_hidden_state\") else None\n        if hidden_states is not None:\n            energy = self.adapter(hidden_states)\n            outputs.energy = energy\n        else:\n            outputs.energy = torch.tensor(0.0, device=next(self.parameters()).device)\n        return outputs\n\n\ndef build_model(cfg: DictConfig, tokenizer) -\u003e nn.Module:\n    if \"Seq2Seq\" in cfg.model.name or \"bart\" in cfg.model.name.lower() or cfg.dataset.task == \"summarisation\":\n        backbone = AutoModelForSeq2SeqLM.from_pretrained(\n            cfg.model.name,\n            cache_dir=\".cache/\",\n            torch_dtype=torch.float16 if cfg.training.precision == \"fp16\" else torch.float32,\n        )\n    else:\n        backbone = AutoModelForCausalLM.from_pretrained(\n            cfg.model.name,\n            cache_dir=\".cache/\",\n            torch_dtype=torch.float16 if cfg.training.precision == \"fp16\" else torch.float32,\n        )\n    # Freeze backbone params\n    for p in backbone.parameters():\n        p.requires_grad = False\n\n    if cfg.method.lower() == \"hest\":\n        adapter = HESTAdapter(backbone.config.hidden_size, cfg)\n    else:\n        adapter = BaselineTABSAdapter()\n\n    model = EnergyWrapperModel(backbone, adapter, cfg)\n    return model\n\n\ndef energy_penalty_from_hidden(hidden, lambda_energy, cfg: DictConfig, return_energy_only: bool = False):\n    \"\"\"Compute energy penalty from hidden states using the adapter setting.\n    If lambda_energy is None we return expected energy only.\"\"\"\n    batch_energy = hidden.new_tensor(0.0)\n    # Rough estimate proportional to sequence length * R * fp16 energy\n    batch_energy = hidden.numel() / hidden.size(-1) * cfg.model.spectral_rank_R * ENERGY_FP16 * 1e-5\n    if return_energy_only:\n        return batch_energy\n    return lambda_energy * (batch_energy - cfg.model.energy_budget_ratio)\n", "preprocess_py": "# src/preprocess.py\nimport functools\nfrom typing import Tuple\n\nimport torch\nfrom torch.utils.data import DataLoader\nfrom transformers import AutoTokenizer, DataCollatorForSeq2Seq\nfrom datasets import load_dataset\nfrom omegaconf import DictConfig\n\nCACHE_DIR = \".cache/\"\n\n\ndef _tokenise_function(examples, tokenizer, cfg: DictConfig):\n    model_inputs = tokenizer(\n        examples[cfg.dataset.text_column],\n        max_length=cfg.dataset.max_length,\n        truncation=True,\n        padding=\"max_length\",\n    )\n    # Tokenise target\n    with tokenizer.as_target_tokenizer():\n        labels = tokenizer(\n            examples[cfg.dataset.summary_column],\n            max_length=cfg.evaluation.generate_max_length,\n            truncation=True,\n            padding=\"max_length\",\n        )\n    model_inputs[\"labels\"] = labels[\"input_ids\"]\n    return model_inputs\n\n\ndef build_dataloaders(cfg: DictConfig, tokenizer) -\u003e Tuple[DataLoader, DataLoader]:\n    raw_ds = load_dataset(cfg.dataset.name, cfg.dataset.subset, cache_dir=CACHE_DIR)\n\n    tokenised_ds = raw_ds.map(\n        functools.partial(_tokenise_function, tokenizer=tokenizer, cfg=cfg),\n        batched=True,\n        num_proc=cfg.dataset.num_workers,\n        remove_columns=raw_ds[cfg.dataset.train_split].column_names,\n    )\n\n    train_ds = tokenised_ds[cfg.dataset.train_split]\n    val_ds = tokenised_ds[cfg.dataset.validation_split]\n\n    data_collator = DataCollatorForSeq2Seq(tokenizer, model=None, padding=\"longest\")\n\n    train_dl = DataLoader(\n        train_ds,\n        shuffle=True,\n        batch_size=cfg.dataset.batch_size,\n        num_workers=cfg.dataset.num_workers,\n        collate_fn=data_collator,\n        pin_memory=cfg.training.pin_memory,\n        persistent_workers=cfg.training.persistent_workers,\n    )\n    val_dl = DataLoader(\n        val_ds,\n        shuffle=False,\n        batch_size=cfg.evaluation.eval_batch_size,\n        num_workers=cfg.dataset.num_workers,\n        collate_fn=data_collator,\n        pin_memory=cfg.training.pin_memory,\n        persistent_workers=cfg.training.persistent_workers,\n    )\n    return train_dl, val_dl\n", "pyproject_toml": "[project]\nname = \"hest-experiments\"\nversion = \"0.1.0\"\ndescription = \"Reproducible experiments for HEST vs. TABS\"\nrequires-python = \"\u003e=3.9\"\n\n[project.dependencies]\ntorch = \"\u003e=2.2.0\"\ntransformers = \"\u003e=4.38.0\"\ndatasets = \"\u003e=2.15.0\"\naccelerate = \"\u003e=0.25.0\"\noptuna = \"\u003e=3.5.0\"\nwandb = \"\u003e=0.16.0\"\nhydra-core = \"\u003e=1.3.2\"\nmatplotlib = \"\u003e=3.8.0\"\nseaborn = \"\u003e=0.13.0\"\npynvml = \"\u003e=11.5.0\"\nevaluate = \"\u003e=0.4.0\"\nscipy = \"\u003e=1.11.0\"\n\n[tool.setuptools.package-data]\n\"\" = [\"config/**/*.yaml\"]\n", "train_py": "# src/train.py\nimport os\nimport sys\nimport json\nimport math\nimport time\nimport shutil\nimport logging\nimport subprocess\nfrom pathlib import Path\nfrom typing import Dict, Any, Tuple, List\n\nimport torch\nimport torch.nn.functional as F\nfrom torch.utils.data import DataLoader\nfrom torch.optim import AdamW\nfrom torch.cuda.amp import GradScaler, autocast\n\nimport optuna\nimport wandb\nimport pynvml\nfrom omegaconf import OmegaConf, DictConfig\n\nfrom transformers import (\n    AutoTokenizer,\n    get_cosine_schedule_with_warmup,\n    DataCollatorForSeq2Seq,\n)\n\nfrom datasets import load_metric\n\nfrom hydra.core.hydra_config import HydraConfig\nimport hydra\n\nfrom .preprocess import build_dataloaders\nfrom .model import build_model, energy_penalty_from_hidden\nfrom .utils import set_seed, format_step_logs\n\nlogger = logging.getLogger(__name__)\n\n\ndef _initialise_wandb(cfg: DictConfig):\n    \"\"\"Create a Weights-and-Biases run or return None if disabled.\"\"\"\n    if cfg.wandb.mode == \"disabled\":\n        os.environ[\"WANDB_MODE\"] = \"disabled\"\n        return None\n    wandb_run = wandb.init(\n        entity=cfg.wandb.entity,\n        project=cfg.wandb.project,\n        id=cfg.run.run_id,\n        resume=\"allow\",\n        config=OmegaConf.to_container(cfg, resolve=True),\n    )\n    print(\"WandB URL:\", wandb_run.url)\n    return wandb_run\n\n\ndef _measure_energy_start():\n    try:\n        pynvml.nvmlInit()\n        handle = pynvml.nvmlDeviceGetHandleByIndex(0)\n        return handle, pynvml.nvmlDeviceGetTotalEnergyConsumption(handle)\n    except Exception:\n        return None, 0.0\n\n\ndef _measure_energy_end(handle):\n    try:\n        return pynvml.nvmlDeviceGetTotalEnergyConsumption(handle)\n    except Exception:\n        return 0.0\n\n\ndef _create_optimizer(model: torch.nn.Module, cfg: DictConfig):\n    no_decay = [\"bias\", \"LayerNorm.weight\"]\n    param_groups = [\n        {\n            \"params\": [\n                p for n, p in model.named_parameters() if (not any(nd in n for nd in no_decay)) and p.requires_grad\n            ],\n            \"weight_decay\": cfg.training.weight_decay,\n        },\n        {\n            \"params\": [\n                p for n, p in model.named_parameters() if (any(nd in n for nd in no_decay)) and p.requires_grad\n            ],\n            \"weight_decay\": 0.0,\n        },\n    ]\n    optim = AdamW(\n        param_groups,\n        lr=cfg.training.learning_rate,\n        betas=(cfg.training.beta1, cfg.training.beta2),\n        eps=cfg.training.eps,\n    )\n    return optim\n\n\ndef _run_epoch(\n    model: torch.nn.Module,\n    dataloader: DataLoader,\n    tokenizer: Any,\n    optimiser: torch.optim.Optimizer,\n    scheduler: torch.optim.lr_scheduler.LambdaLR,\n    scaler: GradScaler,\n    device: torch.device,\n    cfg: DictConfig,\n    wandb_run,\n    epoch: int,\n    lambda_energy: torch.Tensor,\n    energy_budget: float,\n):\n    \"\"\"A single training epoch.\"\"\"\n    model.train()\n    step_logs = {}\n    lang_metric = load_metric(\"rouge\")\n\n    handle, start_energy = _measure_energy_start()\n    for step, batch in enumerate(dataloader):\n        if cfg.training.batch_limit and step \u003e= cfg.training.batch_limit:\n            break\n        # Move\n        batch = {k: v.to(device) for k, v in batch.items() if torch.is_tensor(v)}\n        labels = batch[\"labels\"].clone()\n        with autocast(enabled=cfg.training.precision == \"fp16\"):\n            outputs = model(\n                input_ids=batch[\"input_ids\"],\n                attention_mask=batch[\"attention_mask\"],\n                labels=labels,\n            )\n            task_loss = outputs.loss\n            # energy penalty\n            hidden_states = outputs.encoder_last_hidden_state if hasattr(outputs, \"encoder_last_hidden_state\") else None\n            penalty = 0.0\n            if hidden_states is not None:\n                penalty = energy_penalty_from_hidden(hidden_states, lambda_energy, cfg)\n            loss = task_loss + penalty\n        scaler.scale(loss / cfg.training.gradient_accumulation_steps).backward()\n\n        if (step + 1) % cfg.training.gradient_accumulation_steps == 0:\n            scaler.unscale_(optimiser)\n            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.training.max_grad_norm)\n            scaler.step(optimiser)\n            scaler.update()\n            scheduler.step()\n            optimiser.zero_grad(set_to_none=True)\n\n        # dual ascent update every accumulation boundary\n        if (step + 1) % cfg.training.gradient_accumulation_steps == 0 and hidden_states is not None:\n            energy_batch = energy_penalty_from_hidden(hidden_states, None, cfg, return_energy_only=True)\n            lambda_energy.data = torch.clamp(\n                lambda_energy.data + cfg.training.dual_step_size_alpha * (energy_batch.item() - energy_budget),\n                min=0.0,\n            )\n        # WandB logging\n        if wandb_run and (step + 1) % cfg.training.log_interval_steps == 0:\n            logs = {\n                \"train_loss\": loss.item(),\n                \"task_loss\": task_loss.item(),\n                \"lambda\": lambda_energy.item(),\n                \"lr\": scheduler.get_last_lr()[0],\n                \"global_step\": epoch * len(dataloader) + step + 1,\n            }\n            wandb_run.log(logs)\n            logger.info(format_step_logs(logs))\n\n    total_energy = 0.0\n    if handle:\n        end_energy = _measure_energy_end(handle)\n        total_energy = max(end_energy - start_energy, 0.0)\n        pynvml.nvmlShutdown()\n    return total_energy\n\n\ndef train_once(cfg: DictConfig):\n    \"\"\"Complete training run (single hyper-parameter configuration).\"\"\"\n    set_seed(cfg.training.seed)\n    device = torch.device(cfg.hardware.device if torch.cuda.is_available() else \"cpu\")\n\n    # Tokenizer \u0026 data\n    tokenizer = AutoTokenizer.from_pretrained(cfg.model.name, cache_dir=\".cache/\")\n    train_dl, val_dl = build_dataloaders(cfg, tokenizer)\n\n    # Model\n    model = build_model(cfg, tokenizer)\n    model.to(device)\n\n    optimiser = _create_optimizer(model, cfg)\n    scheduler = get_cosine_schedule_with_warmup(\n        optimiser,\n        num_warmup_steps=cfg.training.warmup_steps,\n        num_training_steps=len(train_dl) * cfg.training.epochs // cfg.training.gradient_accumulation_steps,\n    )\n    scaler = GradScaler(enabled=cfg.training.precision == \"fp16\")\n\n    lambda_energy = torch.tensor(cfg.training.lagrangian_init, device=device, requires_grad=False)\n    energy_budget = cfg.model.energy_budget_ratio\n\n    wandb_run = _initialise_wandb(cfg)\n\n    total_energy_spent = 0.0\n    for epoch in range(cfg.training.epochs):\n        epoch_energy = _run_epoch(\n            model,\n            train_dl,\n            tokenizer,\n            optimiser,\n            scheduler,\n            scaler,\n            device,\n            cfg,\n            wandb_run,\n            epoch,\n            lambda_energy,\n            energy_budget,\n        )\n        total_energy_spent += epoch_energy\n\n    mean_joules_per_sample = total_energy_spent / len(train_dl.dataset)\n    if wandb_run:\n        wandb_run.summary[\"mean_joules_per_sample\"] = mean_joules_per_sample\n        wandb_run.finish()\n\n\ndef _objective(trial: optuna.Trial, base_cfg: DictConfig):\n    cfg = OmegaConf.create(OmegaConf.to_container(base_cfg, resolve=True))\n    # sample params\n    for hp, space in cfg.optuna.search_space.items():\n        if space[\"type\"] == \"loguniform\":\n            val = trial.suggest_float(hp, space[\"low\"], space[\"high\"], log=True)\n        elif space[\"type\"] == \"uniform\":\n            val = trial.suggest_float(hp, space[\"low\"], space[\"high\"])\n        elif space[\"type\"] == \"categorical\":\n            val = trial.suggest_categorical(hp, space[\"choices\"])\n        else:\n            raise ValueError(space[\"type\"])\n        OmegaConf.update(cfg, hp, val, merge=True)\n    # One-epoch proxy for speed\n    cfg.training.epochs = 1\n    cfg.wandb.mode = \"disabled\"\n    try:\n        train_once(cfg)\n        energy = cfg.get(\"_last_energy\", float(\"inf\"))\n    except Exception:\n        energy = float(\"inf\")\n    return energy\n\n\n@hydra.main(config_path=\"../config\", config_name=\"config\")\ndef main(cfg: DictConfig):\n    run_cfg_path = Path(__file__).resolve().parents[1] / \"config\" / \"runs\" / f\"{cfg.run}.yaml\"\n    run_cfg = OmegaConf.load(run_cfg_path)\n    cfg = OmegaConf.merge(cfg, run_cfg)\n    # ------------- mode adjustment ------------\n    if cfg.mode == \"trial\":\n        cfg.wandb.mode = \"disabled\"\n        cfg.optuna.n_trials = 0\n        cfg.training.epochs = 1\n        cfg.training.batch_limit = 2\n    # -----------------------------------------\n\n    if cfg.optuna.n_trials \u003e 0:\n        study = optuna.create_study(direction=cfg.optuna.direction)\n        study.optimize(lambda t: _objective(t, cfg), n_trials=cfg.optuna.n_trials, timeout=cfg.optuna.timeout_min * 60)\n        best_params = study.best_params\n        for k, v in best_params.items():\n            OmegaConf.update(cfg, k, v, merge=True)\n        print(\"Best hyper-parameters\", best_params)\n    # real training with best params\n    train_once(cfg)\n\n\nif __name__ == \"__main__\":\n    main()\n"}
+
+
+
+Analyze the experiment code thoroughly. Ensure it is complete, executable, and ready for publication-quality research experiments.
+Output:
+{
+    "is_code_ready": false,
+    "code_issue": "Code does not satisfy several core requirements:\n\n1. File-structure violation / missing modules\n   • src/train.py imports \"from .utils import set_seed, format_step_logs\" but no src/utils.py is provided (only the 7 allowed files are permitted). This causes immediate ImportError and breaks the file-structure rule (requirement 5).\n\n2. Syntax errors\n   • model.py contains several function signatures written as \"def forward(self, hidden: torch.Tensor) -\\u003e torch.Tensor:\" (and similar). \"-\\u003e\" is not valid Python syntax; the code will not compile (requirement 1).\n\n3. Hydra CLI & subprocess design\n   • src.main launches a second Hydra run via subprocess while already inside a Hydra job. This nested Hydra invocation is error-prone and not part of the specified CLI contract (requirement 2).\n\nBecause of the missing utils file and the syntax errors, the code cannot execute and is not production-ready. Fix these issues (add a permitted utils implementation or inline the required helpers, correct the \"->\" syntax) and ensure no extra files outside the approved list are introduced."
+}
