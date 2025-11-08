@@ -6,5 +6,82 @@
     "LoRA fine-tuning",
     "hyperparameter optimization",
     "prefix tuning"
+  ],
+  "research_study_list": [
+    {
+      "title": "Spectral Adapter: Fine-Tuning in Spectral Space"
+    },
+    {
+      "title": "Parameter-Efficient Fine-Tuning Design Spaces"
+    },
+    {
+      "title": "ReFT: Representation Finetuning for Language Models"
+    },
+    {
+      "title": "SVFT: Parameter-Efficient Fine-Tuning with Singular Vectors"
+    },
+    {
+      "title": "Make Pre-trained Model Reversible: From Parameter to Memory Efficient Fine-Tuning"
+    },
+    {
+      "title": "Spectral Adapter: Fine-Tuning in Spectral Space"
+    },
+    {
+      "title": "Adapters Strike Back"
+    },
+    {
+      "title": "Conditionally Adaptive Multi-Task Learning: Improving Transfer Learning in NLP Using Fewer Parameters & Less Data"
+    },
+    {
+      "title": "Multi-Head Adapter Routing for Cross-Task Generalization"
+    },
+    {
+      "title": "Sparse High Rank Adapters"
+    },
+    {
+      "title": "DoRA: Weight-Decomposed Low-Rank Adaptation"
+    },
+    {
+      "title": "DoRA: Weight-Decomposed Low-Rank Adaptation"
+    },
+    {
+      "title": "Adaptive Budget Allocation for Parameter-Efficient Fine-Tuning "
+    },
+    {
+      "title": "LoRA Training in the NTK Regime has No Spurious Local Minima"
+    },
+    {
+      "title": "LoRA Training in the NTK Regime has No Spurious Local Minima"
+    },
+    {
+      "title": "DP-HyPO: An Adaptive Private Framework for Hyperparameter Optimization"
+    },
+    {
+      "title": "Hyperparameter Optimization through Neural Network Partitioning"
+    },
+    {
+      "title": "Learning to Mutate with Hypergradient Guided Population"
+    },
+    {
+      "title": "Implicit differentiation of Lasso-type models for hyperparameter optimization"
+    },
+    {
+      "title": "Bayesian Optimization for Iterative Learning"
+    },
+    {
+      "title": "Prompting a Pretrained Transformer Can Be a Universal Approximator"
+    },
+    {
+      "title": "HyperTuning:  Toward Adapting Large Language Models without Back-propagation"
+    },
+    {
+      "title": "Prefix Conditioning Unifies Language and Label Supervision"
+    },
+    {
+      "title": "The Stability-Efficiency Dilemma: Investigating Sequence Length Warmup for Training GPT Models"
+    },
+    {
+      "title": "The Stability-Efficiency Dilemma: Investigating Sequence Length Warmup for Training GPT Models"
+    }
   ]
 }
