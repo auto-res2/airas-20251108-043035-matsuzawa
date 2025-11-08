@@ -357,7 +357,7 @@ def _merge_run_specific(cfg: DictConfig) -> DictConfig:
     return cfg_merged
 
 
-@hydra.main(config_path="../config")
+@hydra.main(config_path="../config", config_name="config", version_base=None)
 def main(cfg: DictConfig):  # noqa: D401  pylint: disable=too-many-branches
     # ---------------- Merge run-specific YAML ----------------------------------
     cfg = _merge_run_specific(cfg)

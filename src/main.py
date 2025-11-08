@@ -28,7 +28,7 @@ def _build_overrides(cfg: DictConfig) -> List[str]:
     ]
 
 
-@hydra.main(config_path="../config")
+@hydra.main(config_path="../config", config_name="config", version_base=None)
 def main(cfg: DictConfig):  # noqa: D401
     if cfg.mode not in {"trial", "full"}:
         raise ValueError("mode must be 'trial' or 'full'")
