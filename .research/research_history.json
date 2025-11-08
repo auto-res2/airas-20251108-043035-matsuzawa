@@ -749,6 +749,11 @@
       "expected_result": "HEST matches TABS on Rouge-L (≈44.3) while cutting mean energy by ≥40 %, 99-th latency by 35 %, and reducing controller parameters by 90 %. On 4 k-token inputs it never exceeds E_max whereas TABS overshoots by 1.8× on the longest sequences.",
       "expected_conclusion": "A hierarchical, factorised controller plus joint rank/precision gating turns spectral adapters into an energy-adaptive mechanism that scales to long sequences and edge devices. HEST demonstrates that enforcing a single global *energy* budget—rather than FLOPs alone—yields substantial real-world savings without accuracy loss, pushing PEFT towards sustainable, green NLP."
     },
-    "iterations": []
+    "iterations": [
+      {
+        "iteration_id": 1,
+        "method": "Hierarchical Energy-constrained Spectral Tuning (HEST)\n1. Factorised controller  g(h_{ℓ,t}) = σ( W_tok h_{ℓ,t})·σ( w_ℓ )  produces a rank-1 outer product of token-score and layer-score which is broadcast to the R directions.  Two tiny matrices W_tok∈ℝ^{d×k} and W_ℓ∈ℝ^{L×k} with k≪d remove the O(T·L·R) cost (now O((T+L)·k)).\n2. Each direction i can be chosen in {off, int8, fp16}.  We encode this with a 3-way Gumbel-Softmax gate g_{ℓ,t,i}∈Δ² whose expected energy cost is E_{state}[E_dir(i,state)].\n3. One global Lagrangian λ enforces  Σ_{ℓ,t,i}E_dir(g_{ℓ,t,i}) ≤  E_max  via the differentiable loss  ℒ = task_loss + λ·(Ē−E_max).  λ is updated every batch with a single dual ascent step (no projection).\n4. At convergence the gates are hardened; int8 choices are fused into INT8 MatMuls, others stay fp16.  The worst-case energy per sequence is now strictly bounded by E_max and wall-time improves because many late-layer MatMuls run in INT8 or are skipped.\n5. All additions fit in <200 lines of PyTorch and reuse native Int8 GEMM kernels (torch.cuda.matmul.allow_tf32/int8)."
+      }
+    ]
   }
 }
