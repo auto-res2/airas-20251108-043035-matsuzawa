@@ -779,6 +779,96 @@
             "energy_budget_E_max_ratio": "0.4-0.8",
             "gumbel_temperature_tau": "0.4-1.0",
             "dual_step_size_alpha": "0.01-0.2"
+          },
+          "external_resources": {
+            "hugging_face": {
+              "models": [
+                {
+                  "id": "Qwen/Qwen2.5-7B-Instruct",
+                  "author": "Qwen",
+                  "sha": "a09a35458c702b33eeacc393d103063234e8bc28",
+                  "created_at": "2024-09-16T11:55:40+00:00",
+                  "last_modified": "2025-01-12T02:10:10+00:00",
+                  "private": false,
+                  "gated": false,
+                  "disabled": false,
+                  "downloads": 8625380,
+                  "likes": 858,
+                  "siblings": [
+                    {
+                      "rfilename": ".gitattributes"
+                    },
+                    {
+                      "rfilename": "LICENSE"
+                    },
+                    {
+                      "rfilename": "README.md"
+                    },
+                    {
+                      "rfilename": "config.json"
+                    },
+                    {
+                      "rfilename": "generation_config.json"
+                    },
+                    {
+                      "rfilename": "merges.txt"
+                    },
+                    {
+                      "rfilename": "model-00001-of-00004.safetensors"
+                    },
+                    {
+                      "rfilename": "model-00002-of-00004.safetensors"
+                    },
+                    {
+                      "rfilename": "model-00003-of-00004.safetensors"
+                    },
+                    {
+                      "rfilename": "model-00004-of-00004.safetensors"
+                    }
+                  ],
+                  "card_data": {
+                    "license": "apache-2.0",
+                    "language": [
+                      "en"
+                    ],
+                    "library_name": "transformers",
+                    "pipeline_tag": "text-generation",
+                    "tags": [
+                      "chat"
+                    ],
+                    "datasets": [],
+                    "base_model": "Qwen/Qwen2.5-7B",
+                    "task_categories": [],
+                    "size_categories": [],
+                    "metrics": [],
+                    "widget": []
+                  },
+                  "tags": [
+                    "transformers",
+                    "safetensors",
+                    "qwen2",
+                    "text-generation",
+                    "chat",
+                    "conversational",
+                    "en",
+                    "arxiv:2309.00071",
+                    "arxiv:2407.10671",
+                    "base_model:Qwen/Qwen2.5-7B",
+                    "base_model:finetune:Qwen/Qwen2.5-7B",
+                    "license:apache-2.0",
+                    "autotrain_compatible",
+                    "text-generation-inference",
+                    "endpoints_compatible",
+                    "region:us"
+                  ],
+                  "pipeline_tag": "text-generation",
+                  "library_name": "transformers",
+                  "readme": "---\nlicense: apache-2.0\nlicense_link: https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/blob/main/LICENSE\nlanguage:\n- en\npipeline_tag: text-generation\nbase_model: Qwen/Qwen2.5-7B\ntags:\n- chat\nlibrary_name: transformers\n---\n\n# Qwen2.5-7B-Instruct\n<a href=\"https://chat.qwenlm.ai/\" target=\"_blank\" style=\"margin: 2px;\">\n    <img alt=\"Chat\" src=\"https://img.shields.io/badge/%F0%9F%92%9C%EF%B8%8F%20Qwen%20Chat%20-536af5\" style=\"display: inline-block; vertical-align: middle;\"/>\n</a>\n\n## Introduction\n\nQwen2.5 is the latest series of Qwen large language models. For Qwen2.5, we release a number of base language models and instruction-tuned language models ranging from 0.5 to 72 billion parameters. Qwen2.5 brings the following improvements upon Qwen2:\n\n- Significantly **more knowledge** and has greatly improved capabilities in **coding** and **mathematics**, thanks to our specialized expert models in these domains.\n- Significant improvements in **instruction following**, **generating long texts** (over 8K tokens), **understanding structured data** (e.g, tables), and **generating structured outputs** especially JSON. **More resilient to the diversity of system prompts**, enhancing role-play implementation and condition-setting for chatbots.\n- **Long-context Support** up to 128K tokens and can generate up to 8K tokens.\n- **Multilingual support** for over 29 languages, including Chinese, English, French, Spanish, Portuguese, German, Italian, Russian, Japanese, Korean, Vietnamese, Thai, Arabic, and more. \n\n**This repo contains the instruction-tuned 7B Qwen2.5 model**, which has the following features:\n- Type: Causal Language Models\n- Training Stage: Pretraining & Post-training\n- Architecture: transformers with RoPE, SwiGLU, RMSNorm, and Attention QKV bias\n- Number of Parameters: 7.61B\n- Number of Paramaters (Non-Embedding): 6.53B\n- Number of Layers: 28\n- Number of Attention Heads (GQA): 28 for Q and 4 for KV\n- Context Length: Full 131,072 tokens and generation 8192 tokens\n  - Please refer to [this section](#processing-long-texts) for detailed instructions on how to deploy Qwen2.5 for handling long texts.\n\nFor more details, please refer to our [blog](https://qwenlm.github.io/blog/qwen2.5/), [GitHub](https://github.com/QwenLM/Qwen2.5), and [Documentation](https://qwen.readthedocs.io/en/latest/).\n\n## Requirements\n\nThe code of Qwen2.5 has been in the latest Hugging face `transformers` and we advise you to use the latest version of `transformers`.\n\nWith `transformers<4.37.0`, you will encounter the following error:\n```\nKeyError: 'qwen2'\n```\n\n## Quickstart\n\nHere provides a code snippet with `apply_chat_template` to show you how to load the tokenizer and model and how to generate contents.\n\n```python\nfrom transformers import AutoModelForCausalLM, AutoTokenizer\n\nmodel_name = \"Qwen/Qwen2.5-7B-Instruct\"\n\nmodel = AutoModelForCausalLM.from_pretrained(\n    model_name,\n    torch_dtype=\"auto\",\n    device_map=\"auto\"\n)\ntokenizer = AutoTokenizer.from_pretrained(model_name)\n\nprompt = \"Give me a short introduction to large language model.\"\nmessages = [\n    {\"role\": \"system\", \"content\": \"You are Qwen, created by Alibaba Cloud. You are a helpful assistant.\"},\n    {\"role\": \"user\", \"content\": prompt}\n]\ntext = tokenizer.apply_chat_template(\n    messages,\n    tokenize=False,\n    add_generation_prompt=True\n)\nmodel_inputs = tokenizer([text], return_tensors=\"pt\").to(model.device)\n\ngenerated_ids = model.generate(\n    **model_inputs,\n    max_new_tokens=512\n)\ngenerated_ids = [\n    output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)\n]\n\nresponse = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]\n```\n\n### Processing Long Texts\n\nThe current `config.json` is set for context length up to 32,768 tokens.\nTo handle extensive inputs exceeding 32,768 tokens, we utilize [YaRN](https://arxiv.org/abs/2309.00071), a technique for enhancing model length extrapolation, ensuring optimal performance on lengthy texts.\n\nFor supported frameworks, you could add the following to `config.json` to enable YaRN:\n```json\n{\n  ...,\n  \"rope_scaling\": {\n    \"factor\": 4.0,\n    \"original_max_position_embeddings\": 32768,\n    \"type\": \"yarn\"\n  }\n}\n```\n\nFor deployment, we recommend using vLLM. \nPlease refer to our [Documentation](https://qwen.readthedocs.io/en/latest/deployment/vllm.html) for usage if you are not familar with vLLM.\nPresently, vLLM only supports static YARN, which means the scaling factor remains constant regardless of input length, **potentially impacting performance on shorter texts**. \nWe advise adding the `rope_scaling` configuration only when processing long contexts is required.\n\n## Evaluation & Performance\n\nDetailed evaluation results are reported in this [📑 blog](https://qwenlm.github.io/blog/qwen2.5/).\n\nFor requirements on GPU memory and the respective throughput, see results [here](https://qwen.readthedocs.io/en/latest/benchmark/speed_benchmark.html).\n\n## Citation\n\nIf you find our work helpful, feel free to give us a cite.\n\n```\n@misc{qwen2.5,\n    title = {Qwen2.5: A Party of Foundation Models},\n    url = {https://qwenlm.github.io/blog/qwen2.5/},\n    author = {Qwen Team},\n    month = {September},\n    year = {2024}\n}\n\n@article{qwen2,\n      title={Qwen2 Technical Report}, \n      author={An Yang and Baosong Yang and Binyuan Hui and Bo Zheng and Bowen Yu and Chang Zhou and Chengpeng Li and Chengyuan Li and Dayiheng Liu and Fei Huang and Guanting Dong and Haoran Wei and Huan Lin and Jialong Tang and Jialin Wang and Jian Yang and Jianhong Tu and Jianwei Zhang and Jianxin Ma and Jin Xu and Jingren Zhou and Jinze Bai and Jinzheng He and Junyang Lin and Kai Dang and Keming Lu and Keqin Chen and Kexin Yang and Mei Li and Mingfeng Xue and Na Ni and Pei Zhang and Peng Wang and Ru Peng and Rui Men and Ruize Gao and Runji Lin and Shijie Wang and Shuai Bai and Sinan Tan and Tianhang Zhu and Tianhao Li and Tianyu Liu and Wenbin Ge and Xiaodong Deng and Xiaohuan Zhou and Xingzhang Ren and Xinyu Zhang and Xipin Wei and Xuancheng Ren and Yang Fan and Yang Yao and Yichang Zhang and Yu Wan and Yunfei Chu and Yuqiong Liu and Zeyu Cui and Zhenru Zhang and Zhihao Fan},\n      journal={arXiv preprint arXiv:2407.10671},\n      year={2024}\n}\n```",
+                  "extracted_code": "from transformers import AutoModelForCausalLM, AutoTokenizer\n\nmodel_name = \"Qwen/Qwen2.5-7B-Instruct\"\n\nmodel = AutoModelForCausalLM.from_pretrained(\n    model_name,\n    torch_dtype=\"auto\",\n    device_map=\"auto\"\n)\ntokenizer = AutoTokenizer.from_pretrained(model_name)\n\nprompt = \"Give me a short introduction to large language model.\"\nmessages = [\n    {\"role\": \"system\", \"content\": \"You are Qwen, created by Alibaba Cloud. You are a helpful assistant.\"},\n    {\"role\": \"user\", \"content\": prompt}\n]\ntext = tokenizer.apply_chat_template(\n    messages,\n    tokenize=False,\n    add_generation_prompt=True\n)\nmodel_inputs = tokenizer([text], return_tensors=\"pt\").to(model.device)\n\ngenerated_ids = model.generate(\n    **model_inputs,\n    max_new_tokens=512\n)\ngenerated_ids = [\n    output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)\n]\n\nresponse = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]"
+                }
+              ],
+              "datasets": []
+            }
           }
         },
         "experiment_runs": [
