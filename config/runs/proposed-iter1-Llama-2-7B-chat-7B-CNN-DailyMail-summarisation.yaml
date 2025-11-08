@@ -1,7 +1,7 @@
 run_id: proposed-iter1-Llama-2-7B-chat-7B-CNN-DailyMail-summarisation
 method: HEST
 model:
-  name: Llama-2-7B-chat
+  name: NousResearch/Llama-2-7b-chat-hf
   adapter: HEST
   hidden_size: 4096            # taken from Llama-2-7B config
   num_layers: 32               # taken from Llama-2-7B config

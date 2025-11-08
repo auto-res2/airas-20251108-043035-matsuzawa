@@ -1,7 +1,7 @@
 run_id: comparative-1-iter1-Llama-2-7B-chat-7B-CNN-DailyMail-summarisation
 method: TABS
 model:
-  name: Llama-2-7B-chat
+  name: NousResearch/Llama-2-7b-chat-hf
   adapter: TABS                    # Token-wise Adaptive Basis Selection
   hidden_size: 4096
   num_layers: 32
