@@ -752,7 +752,49 @@
     "iterations": [
       {
         "iteration_id": 1,
-        "method": "Hierarchical Energy-constrained Spectral Tuning (HEST)\n1. Factorised controller  g(h_{ℓ,t}) = σ( W_tok h_{ℓ,t})·σ( w_ℓ )  produces a rank-1 outer product of token-score and layer-score which is broadcast to the R directions.  Two tiny matrices W_tok∈ℝ^{d×k} and W_ℓ∈ℝ^{L×k} with k≪d remove the O(T·L·R) cost (now O((T+L)·k)).\n2. Each direction i can be chosen in {off, int8, fp16}.  We encode this with a 3-way Gumbel-Softmax gate g_{ℓ,t,i}∈Δ² whose expected energy cost is E_{state}[E_dir(i,state)].\n3. One global Lagrangian λ enforces  Σ_{ℓ,t,i}E_dir(g_{ℓ,t,i}) ≤  E_max  via the differentiable loss  ℒ = task_loss + λ·(Ē−E_max).  λ is updated every batch with a single dual ascent step (no projection).\n4. At convergence the gates are hardened; int8 choices are fused into INT8 MatMuls, others stay fp16.  The worst-case energy per sequence is now strictly bounded by E_max and wall-time improves because many late-layer MatMuls run in INT8 or are skipped.\n5. All additions fit in <200 lines of PyTorch and reuse native Int8 GEMM kernels (torch.cuda.matmul.allow_tf32/int8)."
+        "method": "Hierarchical Energy-constrained Spectral Tuning (HEST)\n1. Factorised controller  g(h_{ℓ,t}) = σ( W_tok h_{ℓ,t})·σ( w_ℓ )  produces a rank-1 outer product of token-score and layer-score which is broadcast to the R directions.  Two tiny matrices W_tok∈ℝ^{d×k} and W_ℓ∈ℝ^{L×k} with k≪d remove the O(T·L·R) cost (now O((T+L)·k)).\n2. Each direction i can be chosen in {off, int8, fp16}.  We encode this with a 3-way Gumbel-Softmax gate g_{ℓ,t,i}∈Δ² whose expected energy cost is E_{state}[E_dir(i,state)].\n3. One global Lagrangian λ enforces  Σ_{ℓ,t,i}E_dir(g_{ℓ,t,i}) ≤  E_max  via the differentiable loss  ℒ = task_loss + λ·(Ē−E_max).  λ is updated every batch with a single dual ascent step (no projection).\n4. At convergence the gates are hardened; int8 choices are fused into INT8 MatMuls, others stay fp16.  The worst-case energy per sequence is now strictly bounded by E_max and wall-time improves because many late-layer MatMuls run in INT8 or are skipped.\n5. All additions fit in <200 lines of PyTorch and reuse native Int8 GEMM kernels (torch.cuda.matmul.allow_tf32/int8).",
+        "experimental_design": {
+          "experiment_summary": "We will fine-tune a pretrained Llama-2-7B-chat model on the CNN/DailyMail summarisation task using the proposed Hierarchical Energy-constrained Spectral Tuning (HEST) adapter. During training we jointly optimise task loss and an energy-budget Lagrangian so that, for every input sequence, the total expected energy of all spectral directions stays below a user-specified envelope. The controller is factorised across tokens and layers (rank-1 outer product) and produces a 3-way Gumbel-Softmax gate per spectral direction that selects one of {off, INT8, FP16}. After convergence we harden the gates and fuse INT8 choices into integer GEMM kernels; de-activated directions are skipped. We compare HEST against the strongest prior energy-oblivious spectral adapter, Token-wise Adaptive Basis Selection (TABS), under the same backbone, data split, and optimisation schedule. We report summarisation quality, energy consumed per sample (read with NVML), tail latency, and parameter-efficiency. A small grid search over learning-rate, controller width k, and the energy budget E_max is performed on the validation set. Experiments run on a single NVIDIA A100 80 GB GPU with plenty of system RAM.",
+          "evaluation_metrics": [
+            "Mean Joules per sample at equal or better Rouge-L",
+            "ROUGE-L",
+            "Accuracy",
+            "99th percentile latency",
+            "Controller parameter count",
+            "Mean Joules per sample at equal or better Rouge-L."
+          ],
+          "proposed_method": "Hierarchical Energy-constrained Spectral Tuning (HEST) adds fewer than 200 lines of PyTorch to a standard low-rank spectral adapter.\n1. Factorised controller: g(h_{ℓ,t}) = σ(W_tok h_{ℓ,t}) · σ(w_ℓ) with W_tok∈ℝ^{d×k} and w_ℓ∈ℝ^{k}. This reduces controller complexity from O(T·L·R) to O((T+L)·k).\n2. Precision/state gating: For every retained spectral direction i we learn a 3-way Gumbel-Softmax gate g_{ℓ,t,i}∈Δ² that selects {off, INT8, FP16}. Its expected energy is E_dir(i,state) and is differentiable via the Gumbel trick (τ=2⁄3).\n3. Single global energy budget: A dual variable λ is updated each batch (λ←[λ+α(Ē−E_max)]₊) so the loss becomes 𝓛 = task_loss + λ·(Ē−E_max). This enforces Σ_{ℓ,t,i}E_dir ≤ E_max per sequence.\n4. Inference hardening: At the end of training we sample argmax over gates, eliminate “off” directions, fuse INT8 directions into torch.int8 GEMMs, and leave the remainder in FP16. The bound E_max now holds exactly in worst-case.\n5. Implementation: relies only on standard PyTorch, torch.autocast for INT8, and NVML for energy readings; compatible with any transformer block.",
+          "comparative_methods": [
+            "Token-wise Adaptive Basis Selection (TABS)"
+          ],
+          "models_to_use": [
+            "Llama-2-7B-chat (7B)"
+          ],
+          "datasets_to_use": [
+            "CNN/DailyMail summarisation"
+          ],
+          "hyperparameters_to_search": {
+            "learning_rate": "1e-5-5e-4",
+            "controller_width_k": "16,32,64",
+            "energy_budget_E_max_ratio": "0.4-0.8",
+            "gumbel_temperature_tau": "0.4-1.0",
+            "dual_step_size_alpha": "0.01-0.2"
+          }
+        },
+        "experiment_runs": [
+          {
+            "run_id": "proposed-iter1-Llama-2-7B-chat-7B-CNN-DailyMail-summarisation",
+            "method_name": "proposed",
+            "model_name": "Llama-2-7B-chat (7B)",
+            "dataset_name": "CNN/DailyMail summarisation"
+          },
+          {
+            "run_id": "comparative-1-iter1-Llama-2-7B-chat-7B-CNN-DailyMail-summarisation",
+            "method_name": "comparative-1",
+            "model_name": "Llama-2-7B-chat (7B)",
+            "dataset_name": "CNN/DailyMail summarisation"
+          }
+        ]
       }
     ]
   }
