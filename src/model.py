@@ -179,6 +179,7 @@ def build_energy_aware_model(cfg, tokenizer):
         cache_dir=".cache/",
         torch_dtype=(torch.float16 if cfg.training.precision == "fp16" else torch.float32),
         device_map="auto",
+        attn_implementation="eager",
     )
 
     if tokenizer.pad_token_id is None:
